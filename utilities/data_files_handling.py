@@ -72,3 +72,29 @@ def check_data_files_exist(filename):
         return False
 
 
+_rename_history = []
+
+
+def batch_rename(old_files, old_str, new_str):
+    global _rename_history
+    new_files = []
+    file_map = []
+
+    for idx, old_file in enumerate(old_files):
+        new_files.append(old_file.replace(old_str, new_str))
+        os.rename(old_file, new_files[-1])
+        file_map.append([old_file, new_files[-1]])
+
+    _rename_history.append(file_map)
+
+    return file_map
+
+
+def redo_batch_rename(count=1):
+    global _rename_history
+    while count > 0 and len(_rename_history) > 0:
+        file_map = _rename_history.pop()
+        for i in np.arange(len(file_map)-1, -1, -1):
+            os.rename(file_map[i][1], file_map[i][0])
+
+        count -= 1
