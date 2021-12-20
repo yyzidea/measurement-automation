@@ -14,7 +14,7 @@ def export_measurement_config(obj, attr_keys=None):
 
     params = {}
     for key in attr_keys:
-        if key != 'self':
+        if key != 'self' and hasattr(obj, key):
             if isinstance(obj, dict):
                 param = obj[key]
             else:
