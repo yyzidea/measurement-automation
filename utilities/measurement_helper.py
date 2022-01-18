@@ -14,12 +14,17 @@ def export_measurement_config(obj, attr_keys=None):
 
     params = {}
     for key in attr_keys:
-        if key != 'self' and hasattr(obj, key):
-            if isinstance(obj, dict):
+        flag = 0
+        if isinstance(obj, dict):
+            if key in obj.keys():
                 param = obj[key]
-            else:
+                flag = 1
+        else:
+            if key != 'self' and hasattr(obj, key):
                 param = obj.__getattribute__(key)
+                flag = 1
 
+        if flag:
             if param.__class__.__name__ in ['dict', 'list', 'tuple', 'str', 'int',
                                             'float', 'bool', 'NoneType']:
                 params[key] = param
