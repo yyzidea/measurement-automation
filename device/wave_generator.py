@@ -118,7 +118,7 @@ class CyclicVoltammetry:
                 self.phase = 0
 
             self.wave_generator.set(self.channel, waveform=1, amplitude=self.amplitude,
-                                    offset=self.offset, phase=self.phase, frequency=self.frequency)
+                                    offset=self.offset, phase=self.phase, frequency=self.frequency, duty=50)
         else:
             if self.mode != 'sweep':
                 warn('Illegal mode, the default mode \'sweep\' will be used.')
