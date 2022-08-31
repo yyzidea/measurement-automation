@@ -3,6 +3,7 @@ import os
 import re
 import numpy as np
 from warnings import warn
+from utilities.measurement_helper import load_config, save_config
 
 
 def format_filename(sample, dot_num, state, measurement_type, laser_linewidth, cwl, power, exposure_time,
@@ -47,7 +48,7 @@ def list_data_files(data_dir, prefix, file_suffix, iterator=r'([\d\.]+).*?'):
         I = np.argsort(data_iterators)
         data_iterators = np.sort(data_iterators)
         temp = []
-        if os.name is 'posix':
+        if os.name == 'posix':
             for i in range(0, I.size):
                 temp.append(data_dir+'/'+data_files[I[i]])
         else:
@@ -55,6 +56,12 @@ def list_data_files(data_dir, prefix, file_suffix, iterator=r'([\d\.]+).*?'):
                 temp.append(data_dir+'\\'+data_files[I[i]])
 
         data_files = temp
+    else:
+        for i in range(0, len(data_files)):
+            if os.name == 'posix':
+                data_files[i] = data_dir + '/' + data_files[i]
+            else:
+                data_files[i] = data_dir + '\\' + data_files[i]
 
     return data_files, data_iterators
 
@@ -98,3 +105,33 @@ def redo_batch_rename(count=1):
             os.rename(file_map[i][1], file_map[i][0])
 
         count -= 1
+
+
+def merge_bundle(bundle_filename):
+    data_dir, bundle_name = os.path.split(bundle_filename)
+    bundle_name = os.path.splitext(bundle_name)
+    bundle_name = bundle_name[0]
+    config = load_config(bundle_filename)
+
+    check_data_files_exist(data_dir+'\\'+bundle_name+'.config')
+
+    files, iterators = list_data_files(data_dir+'\\'+bundle_name, bundle_name, '.csv', r'_(\d*?)')
+
+    data = np.empty(0)
+    print('Merging bundle: %s' % bundle_name)
+    for idx, file in enumerate(files):
+        temp_data = np.loadtxt(file, delimiter=',')
+
+        if data.size == 0:
+            data = temp_data
+        else:
+            data = np.vstack((data, temp_data))
+
+        if (idx+1) % 10 == 0:
+            print('Progress: %d/%d' % (idx+1, len(files)), end='\r')
+
+    np.savetxt(data_dir+'\\'+bundle_name+'.csv', data, delimiter=',')
+    save_config(config, data_dir+'\\'+bundle_name+'.config')
+
+    print('Bundle merge complete! Total subfiles:%d' % len(files))
+
