@@ -23,7 +23,7 @@ def IvsV_measurement(config, smu, start_voltage, stop_voltage, step, other_desc=
     if check_filename:
         check_data_files_exist(filename+'.config')
 
-    voltages = np.arange(start_voltage, stop_voltage, step)
+    voltages = np.arange(start_voltage, stop_voltage+step, step)
     currents = np.zeros((voltages.size, average_sample_num))
 
     smu.apply_voltage(np.max([abs(start_voltage), abs(stop_voltage)]), compliance_current=compliance_current)
@@ -58,10 +58,10 @@ def IvsV_measurement(config, smu, start_voltage, stop_voltage, step, other_desc=
 
         plt.figure(fig_num)
         plt.clf()
-        plt.errorbar(voltages[:idx+1], np.mean(currents[:idx+1, :], axis=1)*1e6,
-                     yerr=np.std(currents[:idx+1, :], axis=1)*1e6)
+        plt.errorbar(voltages[:idx+1], np.mean(currents[:idx+1, :], axis=1)*1e9,
+                     yerr=np.std(currents[:idx+1, :], axis=1)*1e9)
         plt.xlabel('Voltage (V)')
-        plt.ylabel('Current (uA)')
+        plt.ylabel('Current (nA)')
         plt.pause(0.1)
 
     print('Finished!')
