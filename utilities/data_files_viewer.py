@@ -66,17 +66,21 @@ def spe_bundle_viewer(bundle_filename, count_range=None):
                 pass
 
         plt.figure(fig_num)
-        plt.clf()
-        plt.imshow(data[:, 1:-1], aspect='auto', extent=[0, data.shape[1], data[-1, 0], data[0, 0]])
+        plot_spe(data, count_range)
 
-        if count_range is not None:
-            plt.clim(count_range)
 
-        plt.colorbar()
+def plot_spe(data, count_range):
+    plt.clf()
+    plt.imshow(data[:, 1:-1], aspect='auto', extent=[0, data.shape[1], data[-1, 0], data[0, 0]])
 
-        plt.pause(0.2)
-        plt.xlabel('Voltages (V)')
-        plt.ylabel('Wavelength (nm)')
+    if count_range is not None:
+        plt.clim(count_range)
+
+    plt.colorbar()
+
+    plt.pause(0.2)
+    plt.xlabel('Voltages (V)')
+    plt.ylabel('Wavelength (nm)')
 
 
 
