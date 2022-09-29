@@ -4,20 +4,21 @@ import numpy as np
 import matplotlib.pyplot as plt
 import time
 import os
-from data_files_handling import check_data_files_exist, format_filename
+from utilities.data_files_handling import check_data_files_exist, format_filename
 from device.wave_generator import waveform_generate
+
 
 # Measurement function
 def IvsV_measurement(config, smu, start_voltage, stop_voltage, step, other_desc=None, check_filename=True,
                      average_sample_num=10, measure_spacing=0.1, measure_delay=0.1,
                      stop_current=1e-3, compliance_current=1e-3):
     config = config.copy()
-    config['main']['measurement_type'] = 'iv'
+    config.main['measurement_type'] = 'iv'
     config.export_measurement_config('iv', locals(), ['start_voltage', 'stop_voltage', 'step',
                                                       'average_sample_num', 'measure_spacing', 'measure_delay'])
 
     filename = '%(data_dir)s\\%(sample)s_%(measurement_type)s_%(start_voltage)sV_%(stop_voltage)sV_%(other_desc)s' % \
-               {'data_dir': config['main']['data_dir'], 'sample': config['main']['sample'], 'measurement_type': 'iv',
+               {'data_dir': config.main['data_dir'], 'sample': config.main['sample'], 'measurement_type': 'iv',
                 'start_voltage': start_voltage, 'stop_voltage': stop_voltage, 'other_desc': other_desc}
 
     if check_filename:
@@ -31,7 +32,7 @@ def IvsV_measurement(config, smu, start_voltage, stop_voltage, step, other_desc=
     smu.enable_source()
     smu.measure_current()
 
-    config['main']['start_time'] = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())
+    config.main['start_time'] = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())
 
     plt.figure()
     fig_num = plt.gcf().number
@@ -75,49 +76,57 @@ def IvsV_measurement(config, smu, start_voltage, stop_voltage, step, other_desc=
 
 def spe_measurement(config, pi, frames, exposure_time=5000, other_desc=None, check_filename=True):
     config = config.copy()
-    config.main.measurement_type = 'spe'
+    config.main['measurement_type'] = 'spe'
 
-    filename_spe = format_filename(config.main.sample, config.main.dot_num, config.main.state,
-                                   config.main.measurement_type, config.main.laser_linewidth, config.main.cwl,
-                                   config.main.power, exposure_time/1000, other_desc=other_desc, suffix='')
+    if other_desc is None:
+        other_desc = ''
+
+    filename_spe = format_filename(config.main['sample'], config.main['dot_num'], config.main['state'],
+                                   config.main['measurement_type'], config.main['laser_linewidth'], config.main['cwl'],
+                                   config.main['power'], exposure_time/1000, other_desc=other_desc, suffix='')
     filename_spe = filename_spe[:-1]
-    filename_config = config.main.data_dir+'\\'+filename_spe+'.config'
+    filename_config = config.main['data_dir']+'\\'+filename_spe+'.config'
 
     if check_filename:
         check_data_files_exist(filename_spe)
 
-    pi.set_file_path(config.main.data_dir)
+    pi.set_file_path(config.main['data_dir'])
 
-    config['main']['start_time'] = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())
+    config.main['start_time'] = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())
 
     pi.exposure_time(exposure_time)
     pi.frames(frames)
     pi.file_name(filename_spe)
     pi.acquire()
 
-    config['main']['dot_num'] = config.main.dot_num
-    config['main']['power'] = config.main.power
+    config.main['dot_num'] = config.main['dot_num']
+    config.main['power'] = config.main['power']
 
     config.save_config(filename_config)
 
 
 def cv_measurement(config, pi, smu, V_l, V_h, V_step, cycles, exposure_time=5.0, frames=1, other_desc='',
                    compliance_current=1e-3, check_filename=True):
+    # Write basic params into config
+    config.main['measurement_type'] = 'cv_spe'
+    config.export_measurement_config('cv_spe', locals(), ['V_l', 'V_h', 'V_step', 'cycles',
+                                                          'exposure_time', 'frames'])
+
     # Handling the filename and work directory
     config = config.copy()
     if other_desc is None:
         other_desc = ''
     other_desc = '%dV_%dV_%.0fmVs-1_cv_' % (V_h, V_l, V_step/exposure_time*1e3)+other_desc
-    bundle_name = format_filename(config.main.sample, config.main.dot_num, config.main.state, 'cvspe',
-                                  config.main.laser_linewidth, config.main.cwl, config.main.power,
-                                  config.main.exposure_time, other_desc=other_desc, suffix='')
+    bundle_name = format_filename(config.main['sample'], config.main['dot_num'], config.main['state'], 'cvspe',
+                                  config.main['laser_linewidth'], config.main['cwl'], config.main['power'],
+                                  config.cv_spe['exposure_time'], other_desc=other_desc, suffix='')
     bundle_name = bundle_name[:-1]
 
-    bundle_config = config.main.data_dir+'\\'+bundle_name+'.bundle'
+    bundle_config = config.main['data_dir']+'\\'+bundle_name+'.bundle'
     if check_filename:
         check_data_files_exist(bundle_config)
 
-    os.makedirs(config.main.data_dir+'\\'+bundle_name)
+    os.makedirs(config.main['data_dir']+'\\'+bundle_name)
     # Code to manage duplicate folder and files inside should be add here!
 
     # Generate voltages sequence
@@ -127,38 +136,40 @@ def cv_measurement(config, pi, smu, V_l, V_h, V_step, cycles, exposure_time=5.0,
     voltages = waveform_generate('triangle', t, amplitude, frequency, offset=0, phase=-90)
 
     # Perform spectrum measurement at different voltages
-    config.main.start_time = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())
-    currents = spe_voltages_measurement(pi, smu, voltages, config.main.data_dir, bundle_name, exposure_time, frames, compliance_current)
+    config.main['start_time'] = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())
+    currents = spe_voltages_measurement(pi, smu, voltages, config.main['data_dir'], bundle_name, exposure_time, frames, compliance_current)
 
     # Write params into config and save config
-    config.main.measurement_type = 'cv_spe'
-    config.export_measurement_config('cv_spe', locals(), ['V_l', 'V_h', 'V_step', 'cycles',
-                                                          'exposure_time', 'frames'])
-    config.cv_spe.t = list(t)
-    config.cv_spe.voltages = list(voltages)
-    config.cv_spe.currents = list(currents)
-    config.main.dot_num = config.main.dot_num
-    config.main.power = config.main.power
+    config.cv_spe['t'] = list(t)
+    config.cv_spe['voltages'] = list(voltages)
+    config.cv_spe['currents'] = list(currents)
+    config.main['dot_num'] = config.main['dot_num']
+    config.main['power'] = config.main['power']
     config.save_config(bundle_config)
 
 
 def ca_measurement(config, pi, smu, V_base, V_drive, t_base, t_drive, cycles, exposure_time=5.0, frames=1,
                    other_desc=None, compliance_current=1e-3, check_filename=True):
+    # Write basic params into config
+    config.main['measurement_type'] = 'ca_spe'
+    config.export_measurement_config('ca_spe', locals(), ['V_base', 'V_drive', 't_base', 't_drive', 'cycles',
+                                                          'exposure_time', 'frames'])
+
     # Handling the filename and work directory
     config = config.copy()
     if other_desc is None:
         other_desc = ''
     other_desc = '%dV_%dV_%.1fs_%.1fs_ca_' % (V_base, V_drive, t_base, t_drive)+other_desc
-    bundle_name = format_filename(config.main.sample, config.main.dot_num, config.main.state, 'caspe',
-                                  config.main.laser_linewidth, config.main.cwl, config.main.power,
-                                  config.main.exposure_time, other_desc=other_desc, suffix='')
+    bundle_name = format_filename(config.main['sample'], config.main['dot_num'], config.main['state'], 'caspe',
+                                  config.main['laser_linewidth'], config.main['cwl'], config.main['power'],
+                                  config.ca_spe['exposure_time'], other_desc=other_desc, suffix='')
     bundle_name = bundle_name[:-1]
 
-    bundle_config = config.main.data_dir+'\\'+bundle_name+'.bundle'
+    bundle_config = config.main['data_dir']+'\\'+bundle_name+'.bundle'
     if check_filename:
         check_data_files_exist(bundle_config)
 
-    os.makedirs(config.main.data_dir+'\\'+bundle_name)
+    os.makedirs(config.main['data_dir']+'\\'+bundle_name)
     # Code to manage duplicate folder and files inside should be add here!
 
     # Generate voltages sequence
@@ -178,18 +189,15 @@ def ca_measurement(config, pi, smu, V_base, V_drive, t_base, t_drive, cycles, ex
     t = np.arange(0, cycles*(t_base+t_drive), exposure_time, dtype='float_')
 
     # Perform spectrum measurement at different voltages
-    config.main.start_time = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())
-    currents = spe_voltages_measurement(pi, smu, voltages, config.main.data_dir, bundle_name, exposure_time, frames, compliance_current)
+    config.main['start_time'] = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())
+    currents = spe_voltages_measurement(pi, smu, voltages, config.main['data_dir'], bundle_name, exposure_time, frames, compliance_current)
 
     # Write params into config and save config
-    config.main.measurement_type = 'ca_spe'
-    config.export_measurement_config('ca_spe', locals(), ['V_base', 'V_drive', 't_base', 't_drive', 'cycles',
-                                                          'exposure_time', 'frames'])
-    config.ca_spe.t = list(t)
-    config.ca_spe.voltages = list(voltages)
-    config.ca_spe.currents = list(currents)
-    config.main.dot_num = config.main.dot_num
-    config.main.power = config.main.power
+    config.ca_spe['t'] = list(t)
+    config.ca_spe['voltages'] = list(voltages)
+    config.ca_spe['currents'] = list(currents)
+    config.main['dot_num'] = config.main['dot_num']
+    config.main['power'] = config.main['power']
     config.save_config(bundle_config)
 
 
@@ -303,4 +311,5 @@ class MeasurementConfig:
         return self
 
     def copy(self):
-        return MeasurementConfig(**self.__dict__)
+        return MeasurementConfig(**self.__dict__.copy())
+
