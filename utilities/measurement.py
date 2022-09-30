@@ -6,6 +6,7 @@ import time
 import os
 from utilities.data_files_handling import check_data_files_exist, format_filename
 from device.wave_generator import waveform_generate
+from lifetime_trace import *
 
 
 # Measurement function
@@ -234,6 +235,42 @@ def spe_voltages_measurement(pi, smu, voltages, data_dir, bundle_name, exposure_
     return currents
 
 
+def lifetimetrace_measurement(config, tagger, click_channel, start_channel, binwidth, n_bins, int_time,
+                              capture_duration, offset, max_delay, min_delay, other_desc='', check_filename=True):
+    config = config.copy()
+    config.main['measurement_type'] = 'lifetimetrace'
+
+    exposure_time = '%dm' % (int_time / 1e9)
+
+    filename_base = format_filename(config.main['sample'], config.main['dot_num'], config.main['state'],
+                                    config.main['measurement_type'], config.main['laser_linewidth'], config.main['cwl'],
+                                    config.main['power'], exposure_time, other_desc=other_desc, suffix='')
+    filename_base = filename_base[:-1]
+
+    filename_ttbin = config.main['data_dir'] + '\\' + filename_base + '.ttbin'
+    filename_csv = config.main['data_dir'] + '\\' + filename_base + '.csv'
+    filename_config = config.main['data_dir'] + '\\' + filename_base + '.config'
+
+    if check_filename:
+        check_data_files_exist(filename_ttbin)
+
+    meas = LifetimeTraceWithFileWriter(tagger, click_channel, start_channel, binwidth, n_bins, int_time, filename_ttbin,
+                                       offset=offset, max_delay=max_delay, min_delay=min_delay)
+
+    config.main['start_time'] = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())
+    # Cyclic voltammetry lifetime trace measurement
+    meas.startForSecond(capture_duration)
+    plot_lifetime_trace(meas)
+
+    # Save csv data
+    save_data(filename_csv, meas)
+
+    config.export_measurement_config('lifetime_trace', meas)
+    config.save_config(filename_config)
+
+    del meas
+
+
 def spe_lifetimetrace_voltages_measurement(pi, tagger, smu, voltages, data_dir, bundle_name, exposure_time,
                                            frames, compliance_current):
     # use trigger from the PI spectrometer to mark the start and end of each frame.
@@ -244,6 +281,8 @@ def spe_lifetimetrace_voltages_measurement(pi, tagger, smu, voltages, data_dir, 
     smu.source_voltage = 0
     smu.enable_source()
     smu.measure_current()
+
+    # lifetime_trace_measurement code here
 
     for idx, voltage in enumerate(voltages):
         print('Measure at %fV (%d/%d)' % (voltage, idx, voltages.size), end='\r')
