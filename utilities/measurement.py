@@ -341,7 +341,7 @@ def lifetimetrace_measurement(config, tagger, click_channel, start_channel, binw
 
 
 class Measurement:
-    def __init__(self, devices, devices_params, file_params, other_params=None):
+    def __init__(self, devices, devices_params=None, file_params=None, other_params=None):
         self.devices = devices
         self.devices_params = {}
         self.file_params = {}
@@ -358,8 +358,11 @@ class Measurement:
 
     @staticmethod
     def add_params(old_params, new_params):
-        for key, value in new_params:
-            old_params[key] = value
+        if new_params is None:
+            return
+
+        for key in new_params:
+            old_params[key] = new_params[key]
 
     def reset_to_default(self):
         self.devices_params = {}
@@ -380,6 +383,13 @@ class Measurement:
 
     def save_config(self, filename):
         self.config.save_config(filename)
+
+    def load_config(self, filename):
+        self.config.load_config(filename)
+
+        self.devices_params = self.config.devices_params
+        self.file_params = self.config.file_params
+        self.other_params = self.config.other_params
 
 
 class SpeLifetimetraceVoltagesMeasurement(Measurement):
@@ -415,9 +425,17 @@ class SpeLifetimetraceVoltagesMeasurement(Measurement):
             'bundle_name': 'untitled',
             'other_desc': None,
             'check_filename': True,
-            'export_config': False
+            'export_config': True,
+            'export_ttbin': False,
         }
-        self.other_params = {}
+        self.other_params = {
+            'dot_num': 1,
+            'power': '50',
+            'sample': 'test',
+            'state': 1,
+            'laser_linewidth': 'pulse',
+            'cwl': '630'
+        }
 
         self.config.devices_params = self.devices_params
         self.config.file_params = self.file_params
@@ -429,13 +447,13 @@ class SpeLifetimetraceVoltagesMeasurement(Measurement):
         pi = self.devices['pi']
         smu = self.devices['smu']
         tagger = self.devices['tagger']
-        voltages = self.devices['smu']['voltages']
+        voltages = np.array(self.devices_params['smu']['voltages'])
         bundle_full_path = self.file_params['data_dir']+'\\'+self.file_params['bundle_name']
         # use trigger from the PI spectrometer to mark the start and end of each frame.
         currents = np.zeros(voltages.shape)
         pi.set_file_path(bundle_full_path)
 
-        smu.apply_voltage(np.max(np.abs(voltages)), compliance_current=self.devices_params['smu'].compliance_current)
+        smu.apply_voltage(np.max(np.abs(voltages)), compliance_current=self.devices_params['smu']['compliance_current'])
         smu.source_voltage = 0
         smu.enable_source()
         smu.measure_current()
@@ -504,7 +522,7 @@ class SpeLifetimetraceVoltagesMeasurement(Measurement):
 
 
 class SpeLifetimetraceCVMeasurement(SpeLifetimetraceVoltagesMeasurement):
-    def __init__(self, devices, devices_params, file_params, other_params=None):
+    def __init__(self, devices, devices_params=None, file_params=None, other_params=None):
         SpeLifetimetraceVoltagesMeasurement.__init__(self, devices, devices_params,
                                                      file_params, other_params)
 
@@ -526,6 +544,7 @@ class SpeLifetimetraceCVMeasurement(SpeLifetimetraceVoltagesMeasurement):
         V_step = self.devices_params['smu']['V_step']
         exposure_time = self.devices_params['pi']['exposure_time']
         cycles = self.devices_params['smu']['cycles']
+        export_config = self.file_params['export_config']
 
         # Handling the filename and work directory
         if self.file_params['other_desc'] is None:
@@ -558,16 +577,22 @@ class SpeLifetimetraceCVMeasurement(SpeLifetimetraceVoltagesMeasurement):
         # Perform spectrum measurement at different voltages
         self.other_params['start_time'] = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())
 
+        self.file_params['export_config'] = False
+        SpeLifetimetraceVoltagesMeasurement.start(self)
+        self.file_params['export_config'] = export_config
+
         # Write params into config and save config
         self.other_params['measurement_type'] = 'cv_spe'
         self.other_params['t'] = list(t)
         self.other_params['dot_num'] = self.other_params['dot_num']
         self.other_params['power'] = self.other_params['power']
-        self.save_config(bundle_config)
+
+        if export_config:
+            self.save_config(bundle_config)
 
 
 class SpeLifetimetraceCAMeasurement(SpeLifetimetraceVoltagesMeasurement):
-    def __init__(self, devices, devices_params, file_params, other_params=None):
+    def __init__(self, devices, devices_params=None, file_params=None, other_params=None):
         SpeLifetimetraceVoltagesMeasurement.__init__(self, devices, devices_params,
                                                      file_params, other_params)
 
@@ -591,6 +616,7 @@ class SpeLifetimetraceCAMeasurement(SpeLifetimetraceVoltagesMeasurement):
         t_drive = self.devices_params['smu']['t_drive']
         exposure_time = self.devices_params['pi']['exposure_time']
         cycles = self.devices_params['smu']['cycles']
+        export_config = self.file_params['export_config']
 
         # Handling the filename and work directory
         if self.file_params['other_desc'] is None:
@@ -633,10 +659,17 @@ class SpeLifetimetraceCAMeasurement(SpeLifetimetraceVoltagesMeasurement):
         # Perform spectrum measurement at different voltages
         self.other_params['start_time'] = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())
 
+        self.file_params['export_config'] = False
+        SpeLifetimetraceVoltagesMeasurement.start(self)
+        self.file_params['export_config'] = export_config
+
         # Write params into config and save config
         self.other_params['measurement_type'] = 'ca_spe'
         self.other_params['t'] = list(t)
         self.other_params['dot_num'] = self.other_params['dot_num']
         self.other_params['power'] = self.other_params['power']
-        self.save_config(bundle_config)
+
+        if export_config:
+            self.save_config(bundle_config)
+
 
