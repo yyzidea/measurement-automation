@@ -6,7 +6,8 @@ import time
 import os
 from utilities.data_files_handling import check_data_files_exist, format_filename
 from device.wave_generator import waveform_generate
-from lifetime_trace import LifetimeTraceGated, LifetimeTraceGatedWithFileWriter, LifetimeTraceWithFileWriter
+from lifetime_trace import LifetimeTraceGated, LifetimeTraceGatedWithFileWriter, LifetimeTraceWithFileWriter, \
+    disable_conditional_filter, enable_conditional_filter
 from time_tagger_utility import *
 from copy import deepcopy
 
@@ -226,7 +227,7 @@ def ca_measurement(config, pi, smu, V_base, V_drive, t_base, t_drive, cycles, ex
     config.export_measurement_config('ca_spe', locals(), ['V_base', 'V_drive', 't_base', 't_drive', 'cycles',
                                                           'exposure_time', 'frames'])
 
-     # Handling the filename and work directory
+    # Handling the filename and work directory
     if other_desc is None:
         other_desc = ''
     other_desc = '%dV_%dV_%.1fs_%.1fs_ca_' % (V_base, V_drive, t_base, t_drive)+other_desc
@@ -395,6 +396,7 @@ class Measurement:
 class SpeLifetimetraceVoltagesMeasurement(Measurement):
     def __init__(self, devices, devices_params, file_params, other_params=None):
         Measurement.__init__(self, devices, devices_params, file_params, other_params)
+        self.lifetime_meas = None
 
     def reset_to_default(self):
         self.devices_params = {
@@ -412,11 +414,13 @@ class SpeLifetimetraceVoltagesMeasurement(Measurement):
                 'gate_on_channel': 4,
                 'gate_off_channel': -4,
                 'binwidth': 50,
-                'n_bins': int(1e6/50),
+                'n_bins': 2000,
                 'int_time': int(0.1e12),
-                'offset': 65600,
-                'min_delay': 0,
-                'max_delay': 200e3,
+                'offset': 136000,
+                'min_delay': 750,
+                'max_delay': 50000,
+                'enable_global_delay': True,
+                'enable_conditional_filter': True
             }
         }
         self.file_params = {
@@ -426,7 +430,7 @@ class SpeLifetimetraceVoltagesMeasurement(Measurement):
             'other_desc': None,
             'check_filename': True,
             'export_config': True,
-            'export_ttbin': False,
+            'export_ttbin': True,
         }
         self.other_params = {
             'dot_num': 1,
@@ -434,7 +438,8 @@ class SpeLifetimetraceVoltagesMeasurement(Measurement):
             'sample': 'test',
             'state': 1,
             'laser_linewidth': 'pulse',
-            'cwl': '630'
+            'cwl': '630',
+            'laser_frequency': 10e6
         }
 
         self.config.devices_params = self.devices_params
@@ -450,7 +455,9 @@ class SpeLifetimetraceVoltagesMeasurement(Measurement):
         voltages = np.array(self.devices_params['smu']['voltages'])
         bundle_full_path = self.file_params['data_dir']+'\\'+self.file_params['bundle_name']
         # use trigger from the PI spectrometer to mark the start and end of each frame.
-        currents = np.zeros(voltages.shape)
+
+        self.devices_params['smu']['currents'] = list(np.zeros(voltages.shape))
+        currents = self.devices_params['smu']['currents']
         pi.set_file_path(bundle_full_path)
 
         smu.apply_voltage(np.max(np.abs(voltages)), compliance_current=self.devices_params['smu']['compliance_current'])
@@ -459,8 +466,11 @@ class SpeLifetimetraceVoltagesMeasurement(Measurement):
         smu.measure_current()
 
         # lifetime_trace_measurement code here
+        if self.devices_params['tagger']['enable_conditional_filter']:
+            self.enable_conditional_filter()
+
         if self.file_params['export_ttbin']:
-            meas = LifetimeTraceGatedWithFileWriter(
+            self.lifetime_meas = LifetimeTraceGatedWithFileWriter(
                 tagger,
                 self.devices_params['tagger']['click_channel'],
                 self.devices_params['tagger']['start_channel'],
@@ -475,7 +485,7 @@ class SpeLifetimetraceVoltagesMeasurement(Measurement):
                 self.devices_params['tagger']['max_delay']
             )
         else:
-            meas = LifetimeTraceGated(
+            self.lifetime_meas = LifetimeTraceGated(
                 tagger,
                 self.devices_params['tagger']['click_channel'],
                 self.devices_params['tagger']['start_channel'],
@@ -489,9 +499,21 @@ class SpeLifetimetraceVoltagesMeasurement(Measurement):
                 self.devices_params['tagger']['max_delay']
             )
 
-        meas.stop()
-        meas.clear()
-        meas.start()
+        self.lifetime_meas.stop()
+        laser_period = 1e12/self.other_params['laser_frequency']
+        if self.devices_params['tagger']['offset'] > laser_period:
+            original_delay = tagger.getDelayHardware(self.devices_params['tagger']['start_channel'])
+            tagger.setDelayHardware(self.devices_params['tagger']['start_channel'],
+                                    original_delay+laser_period*np.floor(self.devices_params['tagger']['offset']/laser_period))
+
+        if self.devices_params['tagger']['enable_global_delay']:
+            self.enable_global_software_offset()
+            self.lifetime_meas.offset = 0
+            if self.file_params['export_ttbin']:
+                self.lifetime_meas.lifetime_trace_gated.offset = 0
+
+        self.lifetime_meas.clear()
+        self.lifetime_meas.start()
         for idx, voltage in enumerate(voltages):
             print('Measure at %fV (%d/%d)' % (voltage, idx, voltages.size), end='\r')
 
@@ -508,17 +530,47 @@ class SpeLifetimetraceVoltagesMeasurement(Measurement):
             pi.file_name(filename_spe)
             pi.acquire()
 
-        meas.stop()
+            self.plot_data()
+
+        self.lifetime_meas.stop()
+        if self.devices_params['tagger']['enable_global_delay']:
+            self.disable_global_software_offset()
+
+        if self.devices_params['tagger']['enable_conditional_filter']:
+            self.disable_conditional_filter()
+
         smu.source_voltage = 0
         print('Finished!')
         pi.set_file_path(self.file_params['data_dir'])
         pi.file_name('untitled')
 
-        self.devices_params['smu']['currents'] = list(currents)
-
-        meas.saveData(bundle_full_path+'_lifetime.csv', bundle_full_path+'_hists.csv')
+        self.lifetime_meas.saveData(bundle_full_path+'_lifetime.csv', bundle_full_path+'_hists.csv')
         if self.file_params['export_config']:
             self.save_config(bundle_full_path+'.config')
+
+    def enable_global_software_offset(self):
+        laser_period = 1e12/self.other_params['laser_frequency']
+        original_delay = self.devices['tagger'].getDelaySoftware(self.devices_params['tagger']['start_channel'])
+        self.devices['tagger'].setDelaySoftware(self.devices_params['tagger']['start_channel'],
+                                                self.devices_params['tagger']['offset']%laser_period+original_delay)
+
+    def disable_global_software_offset(self):
+        laser_period = 1e12/self.other_params['laser_frequency']
+        original_delay = self.devices['tagger'].getDelaySoftware(self.devices_params['tagger']['start_channel'])
+        self.devices['tagger'].setDelaySoftware(self.devices_params['tagger']['start_channel'],
+                                                original_delay-self.devices_params['tagger']['offset']%laser_period)
+
+    def plot_data(self):
+        pass
+
+    def enable_conditional_filter(self):
+        enable_conditional_filter(self.devices['tagger'],
+                                  self.devices_params['tagger']['click_channel'],
+                                  self.devices_params['tagger']['start_channel'],
+                                  self.other_params['laser_frequency'])
+
+    def disable_conditional_filter(self):
+        disable_conditional_filter(self.devices['tagger'], self.devices_params['tagger']['start_channel'])
 
 
 class SpeLifetimetraceCVMeasurement(SpeLifetimetraceVoltagesMeasurement):
@@ -532,7 +584,7 @@ class SpeLifetimetraceCVMeasurement(SpeLifetimetraceVoltagesMeasurement):
         additional_params = {
                                 'V_l': -5,
                                 'V_h': 5,
-                                'V_step': 0.1,
+                                'V_step': 0.2,
                                 'cycles': 1,
                             }
         self.add_params(self.devices_params['smu'], additional_params)
@@ -671,5 +723,3 @@ class SpeLifetimetraceCAMeasurement(SpeLifetimetraceVoltagesMeasurement):
 
         if export_config:
             self.save_config(bundle_config)
-
-
