@@ -42,14 +42,19 @@ def spe_bundle_viewer(bundle_filename, count_range=None):
             locs = np.array(np.around(locs), dtype='int')
             config = load_config(bundle_filename)
 
-            if config['main']['measurement_type'] == 'cv_spe':
-                if locs[-1] >= len(config['cv_spe']['voltages']):
+            if 'other_params' in config.keys():
+                if locs[-1] >= len(config['devices_params']['smu']['voltages']):
                     locs = locs[:-1]
-                plt.xticks(locs+0.5, np.array(config['cv_spe']['voltages'])[locs])
+                plt.xticks(locs + 0.5, np.array(config['devices_params']['smu']['voltages'])[locs])
             else:
-                if locs[-1] >= len(config['ca_spe']['voltages']):
-                    locs = locs[:-1]
-                plt.xticks(locs+0.5, np.array(config['ca_spe']['voltages'])[locs])
+                if config['main']['measurement_type'] == 'cv_spe':
+                    if locs[-1] >= len(config['cv_spe']['voltages']):
+                        locs = locs[:-1]
+                    plt.xticks(locs+0.5, np.array(config['cv_spe']['voltages'])[locs])
+                else:
+                    if locs[-1] >= len(config['ca_spe']['voltages']):
+                        locs = locs[:-1]
+                    plt.xticks(locs+0.5, np.array(config['ca_spe']['voltages'])[locs])
             break
 
         data_filename = data_dir + '\\' + bundle_name + '\\' + bundle_name + '_%d.csv' % idx
