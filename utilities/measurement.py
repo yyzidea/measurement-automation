@@ -392,11 +392,24 @@ class Measurement:
         self.file_params = self.config.file_params
         self.other_params = self.config.other_params
 
+    def set_other_params(self, **kwargs):
+        for key in kwargs:
+            self.other_params[key] = deepcopy(kwargs[key])
+
+    def set_file_params(self, **kwargs):
+        for key in kwargs:
+            self.file_params[key] = deepcopy(kwargs[key])
+
+    def set_devices_params(self, device_name, **kwargs):
+        for key in kwargs:
+            self.devices_params[device_name][key] = deepcopy(kwargs[key])
+
 
 class SpeLifetimetraceVoltagesMeasurement(Measurement):
     def __init__(self, devices, devices_params, file_params, other_params=None):
         Measurement.__init__(self, devices, devices_params, file_params, other_params)
         self.lifetime_meas = None
+        self.fig_num = None
 
     def reset_to_default(self):
         self.devices_params = {
@@ -414,11 +427,11 @@ class SpeLifetimetraceVoltagesMeasurement(Measurement):
                 'gate_on_channel': 4,
                 'gate_off_channel': -4,
                 'binwidth': 50,
-                'n_bins': 2000,
+                'n_bins': 1000,
                 'int_time': int(0.1e12),
                 'offset': 136000,
-                'min_delay': 750,
-                'max_delay': 50000,
+                'min_delay': 800,
+                'max_delay': 49000,
                 'enable_global_delay': True,
                 'enable_conditional_filter': True
             }
@@ -434,12 +447,12 @@ class SpeLifetimetraceVoltagesMeasurement(Measurement):
         }
         self.other_params = {
             'dot_num': 1,
-            'power': '50',
+            'power': '10',
             'sample': 'test',
             'state': 1,
-            'laser_linewidth': 'pulse',
+            'laser_linewidth': 'pulse20M',
             'cwl': '630',
-            'laser_frequency': 10e6
+            'laser_frequency': 20e6
         }
 
         self.config.devices_params = self.devices_params
@@ -530,7 +543,7 @@ class SpeLifetimetraceVoltagesMeasurement(Measurement):
             pi.file_name(filename_spe)
             pi.acquire()
 
-            self.plot_data()
+            # self.plot_data()
 
         self.lifetime_meas.stop()
         if self.devices_params['tagger']['enable_global_delay']:
@@ -560,8 +573,27 @@ class SpeLifetimetraceVoltagesMeasurement(Measurement):
         self.devices['tagger'].setDelaySoftware(self.devices_params['tagger']['start_channel'],
                                                 original_delay-self.devices_params['tagger']['offset']%laser_period)
 
-    def plot_data(self):
+    def plot_data(self, fig_num=None):
         pass
+    #     if fig_num is None:
+    #
+    #     else:
+    #         fig_num
+    #         plt.figure()
+    #         fig_num = plt.gcf().number
+    #
+    #     flag = 0
+    #     while plt.fignum_exists(fig_num):
+    #         lifetime, intensity = meas.getData()
+    #         t = np.arange(0, lifetime.size) * meas.int_time * 1e-12
+    #         plt.figure(fig_num)
+    #
+    #         __plot_lifetime_trace_sub(t, lifetime, intensity / meas.int_time / 1e-12, plot_format_func)
+    #         if flag:
+    #             break
+    #
+    #         if not meas.isRunning():
+    #             flag = 1
 
     def enable_conditional_filter(self):
         enable_conditional_filter(self.devices['tagger'],
@@ -571,6 +603,15 @@ class SpeLifetimetraceVoltagesMeasurement(Measurement):
 
     def disable_conditional_filter(self):
         disable_conditional_filter(self.devices['tagger'], self.devices_params['tagger']['start_channel'])
+
+    def set_pi_params(self, **kwargs):
+        self.set_devices_params('pi', **kwargs)
+
+    def set_smu_params(self, **kwargs):
+        self.set_devices_params('smu', **kwargs)
+
+    def set_tagger_params(self, **kwargs):
+        self.set_devices_params('tagger', **kwargs)
 
 
 class SpeLifetimetraceCVMeasurement(SpeLifetimetraceVoltagesMeasurement):
@@ -584,8 +625,8 @@ class SpeLifetimetraceCVMeasurement(SpeLifetimetraceVoltagesMeasurement):
         additional_params = {
                                 'V_l': -5,
                                 'V_h': 5,
-                                'V_step': 0.2,
-                                'cycles': 1,
+                                'V_step': 1,
+                                'cycles': 2,
                             }
         self.add_params(self.devices_params['smu'], additional_params)
 
@@ -606,7 +647,7 @@ class SpeLifetimetraceCVMeasurement(SpeLifetimetraceVoltagesMeasurement):
 
         other_desc = '%dV_%dV_%.0fmVs-1_cv_' % (V_h, V_l, V_step/exposure_time*1e3)+other_desc
         bundle_name = format_filename(self.other_params['sample'], self.other_params['dot_num'],
-                                      self.other_params['state'], 'cvspe', self.other_params['laser_linewidth'],
+                                      self.other_params['state'], 'cvsl', self.other_params['laser_linewidth'],
                                       self.other_params['cwl'], self.other_params['power'],
                                       exposure_time, other_desc=other_desc, suffix='')
         bundle_name = bundle_name[:-1]
@@ -634,7 +675,7 @@ class SpeLifetimetraceCVMeasurement(SpeLifetimetraceVoltagesMeasurement):
         self.file_params['export_config'] = export_config
 
         # Write params into config and save config
-        self.other_params['measurement_type'] = 'cv_spe'
+        self.other_params['measurement_type'] = 'cv_spe_lifetime'
         self.other_params['t'] = list(t)
         self.other_params['dot_num'] = self.other_params['dot_num']
         self.other_params['power'] = self.other_params['power']
@@ -654,8 +695,8 @@ class SpeLifetimetraceCAMeasurement(SpeLifetimetraceVoltagesMeasurement):
         additional_params = {
                                 'V_base': 0,
                                 'V_drive': 5,
-                                't_base': 60,
-                                't_drive': 60,
+                                't_base': 10,
+                                't_drive': 10,
                                 'cycles': 1,
                             }
         self.add_params(self.devices_params['smu'], additional_params)
@@ -678,7 +719,7 @@ class SpeLifetimetraceCAMeasurement(SpeLifetimetraceVoltagesMeasurement):
 
         other_desc = '%dV_%dV_%.1fs_%.1fs_ca_' % (V_base, V_drive, t_base, t_drive)+other_desc
         bundle_name = format_filename(self.other_params['sample'], self.other_params['dot_num'],
-                                      self.other_params['state'], 'caspe', self.other_params['laser_linewidth'],
+                                      self.other_params['state'], 'casl', self.other_params['laser_linewidth'],
                                       self.other_params['cwl'], self.other_params['power'],
                                       exposure_time, other_desc=other_desc, suffix='')
         bundle_name = bundle_name[:-1]
@@ -703,9 +744,12 @@ class SpeLifetimetraceCAMeasurement(SpeLifetimetraceVoltagesMeasurement):
             t_base = exposure_time*frames_drive
 
         voltages_unique = np.hstack((np.ones(frames_base)*V_base, np.ones(frames_drive)*V_drive))
-        voltages = np.tile(voltages_unique, cycles)
+        voltages = np.tile(voltages_unique, int(np.floor(cycles)))
 
-        t = np.arange(0, cycles*(t_base+t_drive), exposure_time, dtype='float_')
+        if cycles%1 != 0:
+            voltages = np.hstack((voltages, voltages_unique[:int(np.ceil(cycles%1*voltages_unique.size))]))
+
+        t = np.arange(0, voltages.size)*exposure_time
         self.devices_params['smu']['voltages'] = list(voltages)
 
         # Perform spectrum measurement at different voltages
@@ -716,10 +760,28 @@ class SpeLifetimetraceCAMeasurement(SpeLifetimetraceVoltagesMeasurement):
         self.file_params['export_config'] = export_config
 
         # Write params into config and save config
-        self.other_params['measurement_type'] = 'ca_spe'
+        self.other_params['measurement_type'] = 'ca_spe_lifetime'
         self.other_params['t'] = list(t)
         self.other_params['dot_num'] = self.other_params['dot_num']
         self.other_params['power'] = self.other_params['power']
 
         if export_config:
             self.save_config(bundle_config)
+
+
+def set_other_params(meas_list: [], **kwargs):
+    for meas in meas_list:
+        for key in kwargs:
+            meas.other_params[key] = deepcopy(kwargs[key])
+
+
+def set_file_params(meas_list: [], **kwargs):
+    for meas in meas_list:
+        for key in kwargs:
+            meas.file_params[key] = deepcopy(kwargs[key])
+
+
+def set_devices_params(meas_list: [], device_name, **kwargs):
+    for meas in meas_list:
+        for key in kwargs:
+            meas.devices_params[device_name][key] = deepcopy(kwargs[key])
