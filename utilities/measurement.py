@@ -520,7 +520,7 @@ class SpeLifetimetraceVoltagesMeasurement(Measurement):
                                     original_delay+laser_period*np.floor(self.devices_params['tagger']['offset']/laser_period))
 
         if self.devices_params['tagger']['enable_global_delay']:
-            self.enable_global_software_offset()
+            self.enable_global_offset()
             self.lifetime_meas.offset = 0
             if self.file_params['export_ttbin']:
                 self.lifetime_meas.lifetime_trace_gated.offset = 0
@@ -547,7 +547,7 @@ class SpeLifetimetraceVoltagesMeasurement(Measurement):
 
         self.lifetime_meas.stop()
         if self.devices_params['tagger']['enable_global_delay']:
-            self.disable_global_software_offset()
+            self.disable_global_offset()
 
         if self.devices_params['tagger']['enable_conditional_filter']:
             self.disable_conditional_filter()
@@ -561,16 +561,16 @@ class SpeLifetimetraceVoltagesMeasurement(Measurement):
         if self.file_params['export_config']:
             self.save_config(bundle_full_path+'.config')
 
-    def enable_global_software_offset(self):
+    def enable_global_offset(self):
         laser_period = 1e12/self.other_params['laser_frequency']
-        original_delay = self.devices['tagger'].getDelaySoftware(self.devices_params['tagger']['start_channel'])
-        self.devices['tagger'].setDelaySoftware(self.devices_params['tagger']['start_channel'],
+        original_delay = self.devices['tagger'].getDelayHardware(self.devices_params['tagger']['start_channel'])
+        self.devices['tagger'].setDelayHardware(self.devices_params['tagger']['start_channel'],
                                                 self.devices_params['tagger']['offset']%laser_period+original_delay)
 
-    def disable_global_software_offset(self):
+    def disable_global_offset(self):
         laser_period = 1e12/self.other_params['laser_frequency']
-        original_delay = self.devices['tagger'].getDelaySoftware(self.devices_params['tagger']['start_channel'])
-        self.devices['tagger'].setDelaySoftware(self.devices_params['tagger']['start_channel'],
+        original_delay = self.devices['tagger'].getDelayHardware(self.devices_params['tagger']['start_channel'])
+        self.devices['tagger'].setDelayHardware(self.devices_params['tagger']['start_channel'],
                                                 original_delay-self.devices_params['tagger']['offset']%laser_period)
 
     def plot_data(self, fig_num=None):
