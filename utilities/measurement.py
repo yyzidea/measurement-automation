@@ -10,6 +10,7 @@ from lifetime_trace import LifetimeTraceGated, LifetimeTraceGatedWithFileWriter,
     disable_conditional_filter, enable_conditional_filter
 from time_tagger_utility import *
 from copy import deepcopy
+from utilities.data_files_handling import merge_bundle
 
 
 # Config management
@@ -558,6 +559,8 @@ class SpeLifetimetraceVoltagesMeasurement(Measurement):
         pi.file_name('untitled')
 
         self.lifetime_meas.saveData(bundle_full_path+'_lifetime.csv', bundle_full_path+'_hists.csv')
+        merge_bundle(bundle_full_path+'.config')
+
         if self.file_params['export_config']:
             self.save_config(bundle_full_path+'.config')
 
@@ -725,7 +728,7 @@ class SpeLifetimetraceCAMeasurement(SpeLifetimetraceVoltagesMeasurement):
         bundle_name = bundle_name[:-1]
         self.file_params['bundle_name'] = bundle_name
 
-        bundle_config = self.file_params['data_dir']+'\\'+bundle_name+'.bundle'
+        bundle_config = self.file_params['data_dir']+'\\'+bundle_name+'.config'
         if self.file_params['check_filename']:
             check_data_files_exist(bundle_config)
 
@@ -816,7 +819,7 @@ class SpeLifetimetraceMultiCAMeasurement(SpeLifetimetraceVoltagesMeasurement):
         bundle_name = bundle_name[:-1]
         self.file_params['bundle_name'] = bundle_name
 
-        bundle_config = self.file_params['data_dir']+'\\'+bundle_name+'.bundle'
+        bundle_config = self.file_params['data_dir']+'\\'+bundle_name+'.config'
         if self.file_params['check_filename']:
             check_data_files_exist(bundle_config)
 

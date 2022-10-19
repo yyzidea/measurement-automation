@@ -110,10 +110,11 @@ def redo_batch_rename(count=1):
 def merge_bundle(bundle_filename):
     data_dir, bundle_name = os.path.split(bundle_filename)
     bundle_name = os.path.splitext(bundle_name)
+    if bundle_name[1] != 'config':
+        check_data_files_exist(data_dir+'\\'+bundle_name[0]+'.config')
+
     bundle_name = bundle_name[0]
     config = load_config(bundle_filename)
-
-    check_data_files_exist(data_dir+'\\'+bundle_name+'.config')
 
     files, iterators = list_data_files(data_dir+'\\'+bundle_name, bundle_name, '.csv', r'_(\d*?)')
 
