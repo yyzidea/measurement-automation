@@ -737,11 +737,13 @@ class SpeLifetimetraceCAMeasurement(SpeLifetimetraceVoltagesMeasurement):
         if frames_base*exposure_time != t_base:
             warn('The t_base was around from %.3fs to %.3fs' % (t_base, exposure_time*frames_base))
             t_base = exposure_time*frames_base
+            self.devices_params['smu']['t_base'] = t_base
 
         frames_drive = int(np.around(t_drive/exposure_time))
         if frames_drive*exposure_time != t_drive:
             warn('The t_drive was around from %.3fs to %.3fs' % (t_drive, exposure_time*frames_drive))
             t_base = exposure_time*frames_drive
+            self.devices_params['smu']['t_drive'] = t_drive
 
         voltages_unique = np.hstack((np.ones(frames_base)*V_base, np.ones(frames_drive)*V_drive))
         voltages = np.tile(voltages_unique, int(np.floor(cycles)))
@@ -761,6 +763,94 @@ class SpeLifetimetraceCAMeasurement(SpeLifetimetraceVoltagesMeasurement):
 
         # Write params into config and save config
         self.other_params['measurement_type'] = 'ca_spe_lifetime'
+        self.other_params['t'] = list(t)
+        self.other_params['dot_num'] = self.other_params['dot_num']
+        self.other_params['power'] = self.other_params['power']
+
+        if export_config:
+            self.save_config(bundle_config)
+
+
+class SpeLifetimetraceMultiCAMeasurement(SpeLifetimetraceVoltagesMeasurement):
+    def __init__(self, devices, devices_params=None, file_params=None, other_params=None):
+        SpeLifetimetraceVoltagesMeasurement.__init__(self, devices, devices_params,
+                                                     file_params, other_params)
+
+    def reset_to_default(self):
+        SpeLifetimetraceVoltagesMeasurement.reset_to_default(self)
+
+        additional_params = {
+                                'voltage_stages': [0, -5, 5],
+                                't_stages': [10, 10, 10],
+                                'cycles': 1,
+                            }
+        self.add_params(self.devices_params['smu'], additional_params)
+
+    def start(self):
+        def format_stages_desc_string(format_string, arr):
+            s = ''
+            for value in arr:
+                s += format_string % value
+
+            return s
+        # Quick access to certain params
+        voltage_stages = self.devices_params['smu']['voltage_stages']
+        t_stages = self.devices_params['smu']['t_stages']
+        exposure_time = self.devices_params['pi']['exposure_time']
+        cycles = self.devices_params['smu']['cycles']
+        export_config = self.file_params['export_config']
+
+        # Handling the filename and work directory
+        if self.file_params['other_desc'] is None:
+            other_desc = ''
+        else:
+            other_desc = self.file_params['other_desc']
+
+        other_desc = format_stages_desc_string('%dV_', voltage_stages) + \
+            format_stages_desc_string('%.1fs_', t_stages)+'mca_'+other_desc
+
+        bundle_name = format_filename(self.other_params['sample'], self.other_params['dot_num'],
+                                      self.other_params['state'], 'mcasl', self.other_params['laser_linewidth'],
+                                      self.other_params['cwl'], self.other_params['power'],
+                                      exposure_time, other_desc=other_desc, suffix='')
+        bundle_name = bundle_name[:-1]
+        self.file_params['bundle_name'] = bundle_name
+
+        bundle_config = self.file_params['data_dir']+'\\'+bundle_name+'.bundle'
+        if self.file_params['check_filename']:
+            check_data_files_exist(bundle_config)
+
+        os.makedirs(self.file_params['data_dir']+'\\'+bundle_name)
+        # Code to manage duplicate folder and files inside should be added here!
+
+        # Generate voltages sequence
+        frames_stages = int(np.around(t_stages/exposure_time))
+        if np.sum(frames_stages*exposure_time != frames_stages) < len(frames_stages):
+            warn('The t_stages was arounded!')
+            t_stages = exposure_time*frames_stages
+            self.devices_params['smu']['t_stages'] = t_stages
+
+        voltages_unique = np.array([])
+        for frames, voltage in frames_stages, voltage_stages:
+            voltages_unique = np.hstack((voltages_unique, np.ones(frames)*voltage))
+
+        voltages = np.tile(voltages_unique, int(np.floor(cycles)))
+
+        if cycles%1 != 0:
+            voltages = np.hstack((voltages, voltages_unique[:int(np.ceil(cycles%1*voltages_unique.size))]))
+
+        t = np.arange(0, voltages.size)*exposure_time
+        self.devices_params['smu']['voltages'] = list(voltages)
+
+        # Perform spectrum measurement at different voltages
+        self.other_params['start_time'] = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())
+
+        self.file_params['export_config'] = False
+        SpeLifetimetraceVoltagesMeasurement.start(self)
+        self.file_params['export_config'] = export_config
+
+        # Write params into config and save config
+        self.other_params['measurement_type'] = 'mca_spe_lifetime'
         self.other_params['t'] = list(t)
         self.other_params['dot_num'] = self.other_params['dot_num']
         self.other_params['power'] = self.other_params['power']
