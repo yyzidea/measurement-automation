@@ -110,11 +110,13 @@ def redo_batch_rename(count=1):
 def merge_bundle(bundle_filename):
     data_dir, bundle_name = os.path.split(bundle_filename)
     bundle_name = os.path.splitext(bundle_name)
-    if bundle_name[1] != 'config':
-        check_data_files_exist(data_dir+'\\'+bundle_name[0]+'.config')
+
+    check_data_files_exist(data_dir + '\\' + bundle_name[0] + '.csv')
+    if bundle_name[1] == '.bundle':
+        config = load_config(bundle_filename)
+        save_config(config, data_dir+'\\'+bundle_name[0]+'.config')
 
     bundle_name = bundle_name[0]
-    config = load_config(bundle_filename)
 
     files, iterators = list_data_files(data_dir+'\\'+bundle_name, bundle_name, '.csv', r'_(\d*?)')
 
@@ -132,7 +134,6 @@ def merge_bundle(bundle_filename):
             print('Progress: %d/%d' % (idx+1, len(files)), end='\r')
 
     np.savetxt(data_dir+'\\'+bundle_name+'.csv', data, delimiter=',')
-    save_config(config, data_dir+'\\'+bundle_name+'.config')
 
     print('Bundle merge complete! Total subfiles:%d' % len(files))
 
