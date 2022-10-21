@@ -559,10 +559,11 @@ class SpeLifetimetraceVoltagesMeasurement(Measurement):
         pi.file_name('untitled')
 
         self.lifetime_meas.saveData(bundle_full_path+'_lifetime.csv', bundle_full_path+'_hists.csv')
-        merge_bundle(bundle_full_path+'.config')
 
         if self.file_params['export_config']:
             self.save_config(bundle_full_path+'.config')
+
+        merge_bundle(bundle_full_path+'.config')
 
     def enable_global_offset(self):
         laser_period = 1e12/self.other_params['laser_frequency']
@@ -656,7 +657,7 @@ class SpeLifetimetraceCVMeasurement(SpeLifetimetraceVoltagesMeasurement):
         bundle_name = bundle_name[:-1]
         self.file_params['bundle_name'] = bundle_name
 
-        bundle_config = self.file_params['data_dir']+'\\'+bundle_name+'.bundle'
+        bundle_config = self.file_params['data_dir']+'\\'+bundle_name+'.config'
         if self.file_params['check_filename']:
             check_data_files_exist(bundle_config)
 
