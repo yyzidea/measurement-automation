@@ -465,12 +465,39 @@ class SpeLifetimetraceVoltagesMeasurement(Measurement):
         self.data = None
 
     def start(self):
+        # Quick access to certain params
         pi = self.devices['pi']
         smu = self.devices['smu']
         tagger = self.devices['tagger']
         voltages = np.array(self.devices_params['smu']['voltages'])
+        exposure_time = self.devices_params['pi']['exposure_time']
+        export_config = self.file_params['export_config']
+
+        # Handling the filename and work directory
+        if export_config:
+            if self.file_params['other_desc'] is None or voltages.size > 1:
+                other_desc = ''
+            else:
+                other_desc = '%.2fV_' % voltages[0] + self.file_params['other_desc']
+
+            bundle_name = format_filename(self.other_params['sample'], self.other_params['dot_num'],
+                                          self.other_params['state'], 'vsl', self.other_params['laser_linewidth'],
+                                          self.other_params['cwl'], self.other_params['power'],
+                                          exposure_time, other_desc=other_desc, suffix='')
+            bundle_name = bundle_name[:-1]
+            self.file_params['bundle_name'] = bundle_name
+        else:
+            bundle_name = self.file_params['bundle_name']
+
+        bundle_config = self.file_params['data_dir']+'\\'+bundle_name+'.config'
+        if self.file_params['check_filename']:
+            check_data_files_exist(bundle_config)
+
+        os.makedirs(self.file_params['data_dir']+'\\'+bundle_name)
+
+        # Code to manage duplicate folder and files inside should be added here!
+
         bundle_full_path = self.file_params['data_dir']+'\\'+self.file_params['bundle_name']
-        # use trigger from the PI spectrometer to mark the start and end of each frame.
 
         self.devices_params['smu']['currents'] = list(np.zeros(voltages.shape))
         currents = self.devices_params['smu']['currents']
@@ -574,7 +601,7 @@ class SpeLifetimetraceVoltagesMeasurement(Measurement):
 
         self.lifetime_meas.saveData(bundle_full_path+'_lifetime.csv', bundle_full_path+'_hists.csv')
 
-        if self.file_params['export_config']:
+        if export_config:
             self.save_config(bundle_full_path+'.config')
 
         merge_bundle(bundle_full_path+'.config')
@@ -707,13 +734,6 @@ class SpeLifetimetraceCVMeasurement(SpeLifetimetraceVoltagesMeasurement):
         bundle_name = bundle_name[:-1]
         self.file_params['bundle_name'] = bundle_name
 
-        bundle_config = self.file_params['data_dir']+'\\'+bundle_name+'.config'
-        if self.file_params['check_filename']:
-            check_data_files_exist(bundle_config)
-
-        os.makedirs(self.file_params['data_dir']+'\\'+bundle_name)
-        # Code to manage duplicate folder and files inside should be added here!
-
         # Generate voltages sequence
         amplitude = abs(V_l-V_h)
         frequency = 1/(2*amplitude/V_step*exposure_time)
@@ -778,13 +798,6 @@ class SpeLifetimetraceCAMeasurement(SpeLifetimetraceVoltagesMeasurement):
                                       exposure_time, other_desc=other_desc, suffix='')
         bundle_name = bundle_name[:-1]
         self.file_params['bundle_name'] = bundle_name
-
-        bundle_config = self.file_params['data_dir']+'\\'+bundle_name+'.config'
-        if self.file_params['check_filename']:
-            check_data_files_exist(bundle_config)
-
-        os.makedirs(self.file_params['data_dir']+'\\'+bundle_name)
-        # Code to manage duplicate folder and files inside should be added here!
 
         # Generate voltages sequence
         frames_base = int(np.around(t_base/exposure_time))
