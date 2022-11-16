@@ -5,6 +5,7 @@ import matplotlib.pyplot as plt
 import time
 import os
 from utilities.data_files_handling import check_data_files_exist, format_filename
+from utilities.data_files_viewer import find_spec_peak
 from device.wave_generator import waveform_generate
 from lifetime_trace import LifetimeTraceGated, LifetimeTraceGatedWithFileWriter, LifetimeTraceWithFileWriter, \
     disable_conditional_filter, enable_conditional_filter
@@ -411,6 +412,7 @@ class SpeLifetimetraceVoltagesMeasurement(Measurement):
         Measurement.__init__(self, devices, devices_params, file_params, other_params)
         self.lifetime_meas = None
         self.fig_num = None
+        self.data_spe = None
 
     def reset_to_default(self):
         self.devices_params = {
@@ -662,6 +664,9 @@ class SpeLifetimetraceVoltagesMeasurement(Measurement):
     def set_tagger_params(self, **kwargs):
         self.set_devices_params('tagger', **kwargs)
 
+    def __del__(self):
+        del self.lifetime_meas
+
 
 class SpeLifetimetraceCVMeasurement(SpeLifetimetraceVoltagesMeasurement):
     def __init__(self, devices, devices_params=None, file_params=None, other_params=None):
@@ -906,6 +911,87 @@ class SpeLifetimetraceMultiCAMeasurement(SpeLifetimetraceVoltagesMeasurement):
 
         if export_config:
             self.save_config(bundle_config)
+
+
+class SpeMeasurement(Measurement):
+    def __init__(self, devices, devices_params=None, file_params=None, other_params=None):
+        Measurement.__init__(self, devices, devices_params, file_params, other_params)
+        self.fig_num = None
+
+    def reset_to_default(self):
+        self.devices_params = {
+            'pi': {
+                'exposure_time': 5.0,
+                'frames': 1
+            }
+        }
+        self.file_params = {
+            'config': {},
+            'data_dir': '',
+            'other_desc': None,
+            'check_filename': True,
+            'export_config': True,
+        }
+        self.other_params = {
+            'dot_num': 1,
+            'power': '10',
+            'sample': 'test',
+            'state': 1,
+            'laser_linewidth': 'pulse20M',
+            'cwl': '630',
+        }
+
+        self.config.devices_params = self.devices_params
+        self.config.file_params = self.file_params
+        self.config.other_params = self.other_params
+
+        self.data = None
+
+    def start(self):
+        # Quick access to certain params
+        pi = self.devices['pi']
+        self.other_params['measurement_type'] = 'spe'
+        exposure_time = self.devices_params['pi']['exposure_time']
+        frames = self.devices_params['pi']['frames']
+        export_config = self.file_params['export_config']
+
+        # Handling the filename and work directory
+        if self.file_params['other_desc'] is None:
+            other_desc = ''
+        else:
+            other_desc = self.file_params['other_desc']
+
+        filename_spe = format_filename(self.other_params['sample'], self.other_params['dot_num'],
+                                       self.other_params['state'], 'spe', self.other_params['laser_linewidth'],
+                                       self.other_params['cwl'], self.other_params['power'],
+                                       exposure_time, other_desc=other_desc, suffix='')
+        filename_spe = filename_spe[:-1]
+        filename_config = self.file_params['data_dir'] + '\\' + filename_spe + '.config'
+
+        if self.file_params['check_filename']:
+            check_data_files_exist(filename_config)
+
+        # Perform spectrum measurement
+        pi.set_file_path(self.file_params['data_dir'])
+        pi.exposure_time(exposure_time*1000)
+        pi.frames(frames)
+        pi.file_name(filename_spe)
+        self.other_params['start_time'] = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())
+        pi.acquire()
+
+        # Write params into config and save config
+        self.other_params['measurement_type'] = 'spe'
+        self.other_params['dot_num'] = self.other_params['dot_num']
+        self.other_params['power'] = self.other_params['power']
+
+        if export_config:
+            self.save_config(filename_config)
+
+    def plot_data(self, fig_num=None):
+        pass
+
+    def set_pi_params(self, **kwargs):
+        self.set_devices_params('pi', **kwargs)
 
 
 def set_other_params(meas_list: [], **kwargs):
