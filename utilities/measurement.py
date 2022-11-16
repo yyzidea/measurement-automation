@@ -544,7 +544,19 @@ class SpeLifetimetraceVoltagesMeasurement(Measurement):
             pi.file_name(filename_spe)
             pi.acquire()
 
-            # self.plot_data()
+            temp_data = np.loadtxt(bundle_full_path+'\\'+filename_spe+'.csv', delimiter=',')
+            if idx == 0:
+                plt.figure()
+                self.fig_num = plt.gcf().number
+                self.data_spe = temp_data
+                self.plot_data()
+            else:
+                self.data_spe = np.hstack((self.data_spe, np.array([temp_data[:, 1]]).transpose()))
+                if not plt.fignum_exists(self.fig_num):
+                    self.plot_data()
+                    break
+                else:
+                    self.plot_data()
 
         self.lifetime_meas.stop()
         if self.devices_params['tagger']['enable_global_delay']:
@@ -577,27 +589,60 @@ class SpeLifetimetraceVoltagesMeasurement(Measurement):
         self.devices['tagger'].setDelayHardware(self.devices_params['tagger']['start_channel'],
                                                 original_delay-self.devices_params['tagger']['offset']%laser_period)
 
-    def plot_data(self, fig_num=None):
-        pass
-    #     if fig_num is None:
-    #
-    #     else:
-    #         fig_num
-    #         plt.figure()
-    #         fig_num = plt.gcf().number
-    #
-    #     flag = 0
-    #     while plt.fignum_exists(fig_num):
-    #         lifetime, intensity = meas.getData()
-    #         t = np.arange(0, lifetime.size) * meas.int_time * 1e-12
-    #         plt.figure(fig_num)
-    #
-    #         __plot_lifetime_trace_sub(t, lifetime, intensity / meas.int_time / 1e-12, plot_format_func)
-    #         if flag:
-    #             break
-    #
-    #         if not meas.isRunning():
-    #             flag = 1
+    def plot_data(self, count_range=None):
+        if self.data_spe is None:
+            return
+
+        if self.fig_num is None or not plt.fignum_exists(self.fig_num):
+            plt.figure()
+            self.fig_num = plt.gcf().number
+        else:
+            plt.figure(self.fig_num)
+        plt.clf()
+
+        plt.subplot(3, 5, (1, 5))
+        plt.imshow(self.data_spe[:, 1:-1], aspect='auto', extent=[0.5, self.data_spe.shape[1]-0.5, self.data_spe[-1, 0], self.data_spe[0, 0]])
+
+        if count_range is not None:
+            plt.clim(count_range)
+        else:
+            peak = find_spec_peak(self.data_spe[:, 1:-1])[0]
+            plt.clim([0, peak])
+
+        plt.colorbar()
+        plt.xlabel('Frames')
+        plt.ylabel('Wavelength (nm)')
+
+        lifetime, intensity, hists = self.lifetime_meas.getData()
+        t = np.arange(0, lifetime.size) * self.lifetime_meas.int_time * 1e-12
+        self.__plot_lifetime_trace_sub(t, lifetime, intensity / self.lifetime_meas.int_time / 1e-12)
+
+        plt.pause(0.01)
+
+    @staticmethod
+    def __plot_lifetime_trace_sub(t, lifetime, intensity):
+        plt.subplot(3, 5, (6, 9))
+        plt.plot(t, lifetime)
+        plt.ylabel('Lifetime (ns)')
+        ylim1 = plt.gca().get_ylim()
+
+        plt.subplot(3, 5, 10)
+        plt.hist(lifetime, 100, orientation='horizontal')
+        plt.gca().set_xticks([])
+        plt.gca().set_ylim(ylim1)
+        plt.gca().set_yticks([])
+
+        plt.subplot(3, 5, (11, 14))
+        plt.plot(t, intensity)
+        plt.xlabel('Time (s)')
+        plt.ylabel('Count (pcs)')
+        ylim2 = plt.gca().get_ylim()
+
+        plt.subplot(3, 5, 15)
+        plt.hist(intensity, 100, orientation='horizontal')
+        plt.gca().set_xticks([])
+        plt.gca().set_ylim(ylim2)
+        plt.gca().set_yticks([])
 
     def enable_conditional_filter(self):
         enable_conditional_filter(self.devices['tagger'],
