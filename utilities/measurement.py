@@ -926,6 +926,322 @@ class SpeLifetimetraceMultiCAMeasurement(SpeLifetimetraceVoltagesMeasurement):
             self.save_config(bundle_config)
 
 
+class SpeVoltagesMeasurement(Measurement):
+    def __init__(self, devices, devices_params, file_params, other_params=None):
+        Measurement.__init__(self, devices, devices_params, file_params, other_params)
+        self.fig_num = None
+        self.data_spe = None
+
+    def reset_to_default(self):
+        self.devices_params = {
+            'pi': {
+                'exposure_time': 5.0,
+                'frames': 1
+            },
+            'smu': {
+                'voltages': [],
+                'compliance_current': 1e-3
+            },
+        }
+        self.file_params = {
+            'config': {},
+            'data_dir': '',
+            'bundle_name': 'untitled',
+            'other_desc': None,
+            'check_filename': True,
+            'export_config': True
+        }
+        self.other_params = {
+            'dot_num': 1,
+            'power': '10',
+            'sample': 'test',
+            'state': 1,
+            'laser_linewidth': 'cw',
+            'cwl': '630'
+        }
+
+        self.config.devices_params = self.devices_params
+        self.config.file_params = self.file_params
+        self.config.other_params = self.other_params
+
+        self.data = None
+
+    def start(self):
+        # Quick access to certain params
+        pi = self.devices['pi']
+        smu = self.devices['smu']
+        voltages = np.array(self.devices_params['smu']['voltages'])
+        exposure_time = self.devices_params['pi']['exposure_time']
+        export_config = self.file_params['export_config']
+
+        # Handling the filename and work directory
+        if export_config:
+            if self.file_params['other_desc'] is None:
+                if voltages.size > 1:
+                    other_desc = ''
+                else:
+                    other_desc = '%.2fV_' % voltages[0]
+            else:
+                if voltages.size > 1:
+                    other_desc = self.file_params['other_desc']
+                else:
+                    other_desc = '%.2fV_' % voltages[0] + self.file_params['other_desc']
+
+            bundle_name = format_filename(self.other_params['sample'], self.other_params['dot_num'],
+                                          self.other_params['state'], 'vsl', self.other_params['laser_linewidth'],
+                                          self.other_params['cwl'], self.other_params['power'],
+                                          exposure_time, other_desc=other_desc, suffix='')
+            bundle_name = bundle_name[:-1]
+            self.file_params['bundle_name'] = bundle_name
+        else:
+            bundle_name = self.file_params['bundle_name']
+
+        bundle_config = self.file_params['data_dir']+'\\'+bundle_name+'.config'
+        if self.file_params['check_filename']:
+            check_data_files_exist(bundle_config)
+
+        os.makedirs(self.file_params['data_dir']+'\\'+bundle_name)
+
+        # Code to manage duplicate folder and files inside should be added here!
+
+        bundle_full_path = self.file_params['data_dir']+'\\'+self.file_params['bundle_name']
+
+        self.devices_params['smu']['currents'] = list(np.zeros(voltages.shape))
+        currents = self.devices_params['smu']['currents']
+        pi.set_file_path(bundle_full_path)
+
+        smu.apply_voltage(np.max(np.abs(voltages)), compliance_current=self.devices_params['smu']['compliance_current'])
+        smu.source_voltage = 0
+        smu.enable_source()
+        smu.measure_current()
+
+        for idx, voltage in enumerate(voltages):
+            print('Measure at %fV (%d/%d)' % (voltage, idx, voltages.size), end='\r')
+
+            filename_spe = self.file_params['bundle_name']+'_%d' % idx
+            smu.source_voltage = voltage
+
+            currents[idx] = smu.current
+            if currents[idx] > self.devices_params['smu']['compliance_current']:
+                print('Current overload!')
+                break
+
+            pi.exposure_time(self.devices_params['pi']['exposure_time']*1000)
+            pi.frames(self.devices_params['pi']['frames'])
+            pi.file_name(filename_spe)
+            pi.acquire()
+
+            temp_data = np.loadtxt(bundle_full_path+'\\'+filename_spe+'.csv', delimiter=',')
+            if idx == 0:
+                plt.figure()
+                self.fig_num = plt.gcf().number
+                self.data_spe = temp_data
+                self.plot_data()
+            else:
+                self.data_spe = np.hstack((self.data_spe, np.array([temp_data[:, 1]]).transpose()))
+                if not plt.fignum_exists(self.fig_num):
+                    self.plot_data()
+                    break
+                else:
+                    self.plot_data()
+
+        smu.source_voltage = 0
+        print('Finished!')
+        pi.set_file_path(self.file_params['data_dir'])
+        pi.file_name('untitled')
+
+        if export_config:
+            self.save_config(bundle_full_path+'.config')
+
+        merge_bundle(bundle_full_path+'.config')
+
+    def plot_data(self, count_range=None):
+        if self.data_spe is None:
+            return
+
+        if self.fig_num is None or not plt.fignum_exists(self.fig_num):
+            plt.figure()
+            self.fig_num = plt.gcf().number
+        else:
+            plt.figure(self.fig_num)
+        plt.clf()
+
+        plt.subplot(2, 5, (1, 5))
+        plt.imshow(self.data_spe[:, 1:], aspect='auto', extent=[-0.5, self.data_spe.shape[1]-1.5, self.data_spe[-1, 0], self.data_spe[0, 0]])
+
+        if count_range is not None:
+            plt.clim(count_range)
+        else:
+            peak = find_spec_peak(self.data_spe[:, 1:])[0]
+            plt.clim([0, peak])
+
+        plt.colorbar()
+        plt.xlabel('Frames')
+        plt.ylabel('Wavelength (nm)')
+
+        plt.subplot(2, 5, (6, 9))
+        plt.plot(self.devices_params['smu']['voltages'][:self.data_spe.shape[1]-1])
+
+        plt.pause(0.01)
+
+    def set_pi_params(self, **kwargs):
+        self.set_devices_params('pi', **kwargs)
+
+    def set_smu_params(self, **kwargs):
+        self.set_devices_params('smu', **kwargs)
+
+
+class SpeCVMeasurement(SpeVoltagesMeasurement):
+    def __init__(self, devices, devices_params=None, file_params=None, other_params=None):
+        SpeVoltagesMeasurement.__init__(self, devices, devices_params,
+                                        file_params, other_params)
+
+    def reset_to_default(self):
+        SpeVoltagesMeasurement.reset_to_default(self)
+
+        additional_params = {
+                                'V_l': -5,
+                                'V_h': 5,
+                                'V_step': 1,
+                                'cycles': 2,
+                                'start_from_zero': True,
+                            }
+        self.add_params(self.devices_params['smu'], additional_params)
+
+    def start(self):
+        # Quick access to certain params
+        V_l = self.devices_params['smu']['V_l']
+        V_h = self.devices_params['smu']['V_h']
+        V_step = self.devices_params['smu']['V_step']
+        exposure_time = self.devices_params['pi']['exposure_time']
+        cycles = self.devices_params['smu']['cycles']
+        export_config = self.file_params['export_config']
+
+        # Handling the filename and work directory
+        if self.file_params['other_desc'] is None:
+            other_desc = ''
+        else:
+            other_desc = self.file_params['other_desc']
+
+        other_desc = '%dV_%dV_%.0fmVs-1_cv_' % (V_h, V_l, V_step/exposure_time*1e3)+other_desc
+        bundle_name = format_filename(self.other_params['sample'], self.other_params['dot_num'],
+                                      self.other_params['state'], 'cvspe', self.other_params['laser_linewidth'],
+                                      self.other_params['cwl'], self.other_params['power'],
+                                      exposure_time, other_desc=other_desc, suffix='')
+        bundle_name = bundle_name[:-1]
+        self.file_params['bundle_name'] = bundle_name
+
+        # Generate voltages sequence
+        amplitude = abs(V_l-V_h)
+        offset = (V_h + V_l) / 2
+        frequency = 1/(2*amplitude/V_step*exposure_time)
+        t = np.arange(0, cycles*(2*amplitude/V_step*exposure_time)+exposure_time, exposure_time)
+
+        if self.devices_params['smu']['start_from_zero'] and V_l <= 0 <= V_h:
+            phase = V_l / amplitude * 180
+        else:
+            phase = 0
+
+        voltages = waveform_generate('triangle', t, amplitude, frequency, offset=offset, phase=phase)
+        self.devices_params['smu']['voltages'] = list(voltages)
+
+        # Perform spectrum measurement at different voltages
+        self.other_params['start_time'] = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())
+
+        self.file_params['export_config'] = False
+        SpeVoltagesMeasurement.start(self)
+        self.file_params['export_config'] = export_config
+
+        # Write params into config and save config
+        self.other_params['measurement_type'] = 'cv_spe'
+        self.other_params['t'] = list(t)
+        self.other_params['dot_num'] = self.other_params['dot_num']
+        self.other_params['power'] = self.other_params['power']
+
+        if export_config:
+            self.save_config(self.file_params['data_dir']+'\\'+bundle_name+'.config')
+
+
+class SpeCAMeasurement(SpeVoltagesMeasurement):
+    def __init__(self, devices, devices_params=None, file_params=None, other_params=None):
+        SpeVoltagesMeasurement.__init__(self, devices, devices_params,
+                                        file_params, other_params)
+
+    def reset_to_default(self):
+        SpeVoltagesMeasurement.reset_to_default(self)
+
+        additional_params = {
+                                'V_base': 0,
+                                'V_drive': 5,
+                                't_base': 10,
+                                't_drive': 10,
+                                'cycles': 1,
+                            }
+        self.add_params(self.devices_params['smu'], additional_params)
+
+    def start(self):
+        # Quick access to certain params
+        V_base = self.devices_params['smu']['V_base']
+        V_drive = self.devices_params['smu']['V_drive']
+        t_base = self.devices_params['smu']['t_base']
+        t_drive = self.devices_params['smu']['t_drive']
+        exposure_time = self.devices_params['pi']['exposure_time']
+        cycles = self.devices_params['smu']['cycles']
+        export_config = self.file_params['export_config']
+
+        # Handling the filename and work directory
+        if self.file_params['other_desc'] is None:
+            other_desc = ''
+        else:
+            other_desc = self.file_params['other_desc']
+
+        other_desc = '%dV_%dV_%.1fs_%.1fs_ca_' % (V_base, V_drive, t_base, t_drive)+other_desc
+        bundle_name = format_filename(self.other_params['sample'], self.other_params['dot_num'],
+                                      self.other_params['state'], 'caspe', self.other_params['laser_linewidth'],
+                                      self.other_params['cwl'], self.other_params['power'],
+                                      exposure_time, other_desc=other_desc, suffix='')
+        bundle_name = bundle_name[:-1]
+        self.file_params['bundle_name'] = bundle_name
+
+        # Generate voltages sequence
+        frames_base = int(np.around(t_base/exposure_time))
+        if frames_base*exposure_time != t_base:
+            warn('The t_base was around from %.3fs to %.3fs' % (t_base, exposure_time*frames_base))
+            t_base = exposure_time*frames_base
+            self.devices_params['smu']['t_base'] = t_base
+
+        frames_drive = int(np.around(t_drive/exposure_time))
+        if frames_drive*exposure_time != t_drive:
+            warn('The t_drive was around from %.3fs to %.3fs' % (t_drive, exposure_time*frames_drive))
+            t_base = exposure_time*frames_drive
+            self.devices_params['smu']['t_drive'] = t_drive
+
+        voltages_unique = np.hstack((np.ones(frames_base)*V_base, np.ones(frames_drive)*V_drive))
+        voltages = np.tile(voltages_unique, int(np.floor(cycles)))
+
+        if cycles%1 != 0:
+            voltages = np.hstack((voltages, voltages_unique[:int(np.ceil(cycles%1*voltages_unique.size))]))
+
+        t = np.arange(0, voltages.size)*exposure_time
+        self.devices_params['smu']['voltages'] = list(voltages)
+
+        # Perform spectrum measurement at different voltages
+        self.other_params['start_time'] = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())
+
+        self.file_params['export_config'] = False
+        SpeVoltagesMeasurement.start(self)
+        self.file_params['export_config'] = export_config
+
+        # Write params into config and save config
+        self.other_params['measurement_type'] = 'ca_spe'
+        self.other_params['t'] = list(t)
+        self.other_params['dot_num'] = self.other_params['dot_num']
+        self.other_params['power'] = self.other_params['power']
+
+        if export_config:
+            self.save_config(self.file_params['data_dir']+'\\'+bundle_name+'.config')
+
+
 class SpeMeasurement(Measurement):
     def __init__(self, devices, devices_params=None, file_params=None, other_params=None):
         Measurement.__init__(self, devices, devices_params, file_params, other_params)
