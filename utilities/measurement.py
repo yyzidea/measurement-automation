@@ -413,6 +413,7 @@ class SpeLifetimetraceVoltagesMeasurement(Measurement):
         self.lifetime_meas = None
         self.fig_num = None
         self.data_spe = None
+        self.wavelength_range = None
 
     def reset_to_default(self):
         self.devices_params = {
@@ -475,10 +476,16 @@ class SpeLifetimetraceVoltagesMeasurement(Measurement):
 
         # Handling the filename and work directory
         if export_config:
-            if self.file_params['other_desc'] is None or voltages.size > 1:
-                other_desc = ''
+            if self.file_params['other_desc'] is None:
+                if voltages.size > 1:
+                    other_desc = ''
+                else:
+                    other_desc = '%.2fV_' % voltages[0]
             else:
-                other_desc = '%.2fV_' % voltages[0] + self.file_params['other_desc']
+                if voltages.size > 1:
+                    other_desc = self.file_params['other_desc']
+                else:
+                    other_desc = '%.2fV_' % voltages[0] + self.file_params['other_desc']
 
             bundle_name = format_filename(self.other_params['sample'], self.other_params['dot_num'],
                                           self.other_params['state'], 'vsl', self.other_params['laser_linewidth'],
@@ -629,18 +636,25 @@ class SpeLifetimetraceVoltagesMeasurement(Measurement):
             plt.figure(self.fig_num)
         plt.clf()
 
-        plt.subplot(3, 5, (1, 5))
-        plt.imshow(self.data_spe[:, 1:-1], aspect='auto', extent=[0.5, self.data_spe.shape[1]-0.5, self.data_spe[-1, 0], self.data_spe[0, 0]])
+        plt.subplot(4, 5, (1, 5))
+        plt.imshow(self.data_spe[:, 1:], aspect='auto', extent=[-0.5, self.data_spe.shape[1]-1.5, self.data_spe[-1, 0], self.data_spe[0, 0]])
 
         if count_range is not None:
             plt.clim(count_range)
         else:
-            peak = find_spec_peak(self.data_spe[:, 1:-1])[0]
+            peak = find_spec_peak(self.data_spe[:, 1:])[0]
             plt.clim([0, peak])
+
+        if self.wavelength_range is not None:
+            plt.ylim(self.wavelength_range)
+
 
         plt.colorbar()
         plt.xlabel('Frames')
         plt.ylabel('Wavelength (nm)')
+
+        plt.subplot(4, 5, (6, 9))
+        plt.plot(self.devices_params['smu']['voltages'][:self.data_spe.shape[1]-1])
 
         lifetime, intensity, hists = self.lifetime_meas.getData()
         t = np.arange(0, lifetime.size) * self.lifetime_meas.int_time * 1e-12
@@ -650,24 +664,24 @@ class SpeLifetimetraceVoltagesMeasurement(Measurement):
 
     @staticmethod
     def __plot_lifetime_trace_sub(t, lifetime, intensity):
-        plt.subplot(3, 5, (6, 9))
+        plt.subplot(4, 5, (11, 14))
         plt.plot(t, lifetime)
         plt.ylabel('Lifetime (ns)')
         ylim1 = plt.gca().get_ylim()
 
-        plt.subplot(3, 5, 10)
+        plt.subplot(4, 5, 15)
         plt.hist(lifetime, 100, orientation='horizontal')
         plt.gca().set_xticks([])
         plt.gca().set_ylim(ylim1)
         plt.gca().set_yticks([])
 
-        plt.subplot(3, 5, (11, 14))
+        plt.subplot(4, 5, (16, 19))
         plt.plot(t, intensity)
         plt.xlabel('Time (s)')
         plt.ylabel('Count (pcs)')
         ylim2 = plt.gca().get_ylim()
 
-        plt.subplot(3, 5, 15)
+        plt.subplot(4, 5, 20)
         plt.hist(intensity, 100, orientation='horizontal')
         plt.gca().set_xticks([])
         plt.gca().set_ylim(ylim2)
@@ -708,6 +722,7 @@ class SpeLifetimetraceCVMeasurement(SpeLifetimetraceVoltagesMeasurement):
                                 'V_h': 5,
                                 'V_step': 1,
                                 'cycles': 2,
+                                'start_from_zero': True,
                             }
         self.add_params(self.devices_params['smu'], additional_params)
 
@@ -736,9 +751,16 @@ class SpeLifetimetraceCVMeasurement(SpeLifetimetraceVoltagesMeasurement):
 
         # Generate voltages sequence
         amplitude = abs(V_l-V_h)
+        offset = (V_h + V_l) / 2
         frequency = 1/(2*amplitude/V_step*exposure_time)
         t = np.arange(0, cycles*(2*amplitude/V_step*exposure_time)+exposure_time, exposure_time)
-        voltages = waveform_generate('triangle', t, amplitude, frequency, offset=0, phase=-90)
+
+        if self.devices_params['smu']['start_from_zero'] and V_l <= 0 <= V_h:
+            phase = V_l / amplitude * 180
+        else:
+            phase = 0
+
+        voltages = waveform_generate('triangle', t, amplitude, frequency, offset=offset, phase=phase)
         self.devices_params['smu']['voltages'] = list(voltages)
 
         # Perform spectrum measurement at different voltages
@@ -755,7 +777,7 @@ class SpeLifetimetraceCVMeasurement(SpeLifetimetraceVoltagesMeasurement):
         self.other_params['power'] = self.other_params['power']
 
         if export_config:
-            self.save_config(bundle_config)
+            self.save_config(self.file_params['data_dir']+'\\'+bundle_name+'.config')
 
 
 class SpeLifetimetraceCAMeasurement(SpeLifetimetraceVoltagesMeasurement):
@@ -835,7 +857,7 @@ class SpeLifetimetraceCAMeasurement(SpeLifetimetraceVoltagesMeasurement):
         self.other_params['power'] = self.other_params['power']
 
         if export_config:
-            self.save_config(bundle_config)
+            self.save_config(self.file_params['data_dir']+'\\'+bundle_name+'.config')
 
 
 class SpeLifetimetraceMultiCAMeasurement(SpeLifetimetraceVoltagesMeasurement):
